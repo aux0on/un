@@ -92,10 +92,10 @@ local function getfserv(s)
     return game[s]
 end
 
-local __RS   = getfserv("RunService")
+local __RS  = getfserv("RunService")
 local __UIS  = getfserv("UserInputService")
 local __PLRS = getfserv("Players")
-local __TS   = getfserv("TweenService")
+local __TS  = getfserv("TweenService")
 
 local muteButtonSounds = false
 
@@ -399,7 +399,7 @@ do
         Workspace.FallenPartsDestroyHeight = -100000
 
         local startTime = tick()
-        local resetDuration = 1.5
+        local resetDuration = 0.55 -- Shortened duration to prevent direction redirection
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
             if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
@@ -416,8 +416,16 @@ do
             end
 
             if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                local headPos = THead and THead.Position or (TRootPart.Position + Vector3.new(0, 2.5, 0))
-                RootPart.CFrame = CFrame.new(headPos)
+                -- Start higher up, above the top of the head
+                local headPos = THead and (THead.Position + Vector3.new(0, 2.2, 0)) or (TRootPart.Position + Vector3.new(0, 4.5, 0))
+                local torsoPos = TRootPart.Position
+                
+                -- Single smooth sweep down into the torso over the shortened duration
+                local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
+                local sweepPos = headPos:Lerp(torsoPos, alpha)
+
+                -- Lay horizontal (pitched 90 degrees) and sweep down
+                RootPart.CFrame = CFrame.new(sweepPos) * CFrame.Angles(math.pi / 2, 0, 0)
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
 

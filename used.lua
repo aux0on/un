@@ -321,6 +321,7 @@ do
     local clickFlingEnabled = false
     local flingAuraEnabled = false
     local auraStuds = 15
+    local customResetDuration = 0.35
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
@@ -331,12 +332,14 @@ do
     local RunService = game:GetService("RunService")
     local Workspace = game:GetService("Workspace")
 
+    local lastResetAttempt = 0
+    local RESET_COORDINATE_COOLDOWN = 0.4 
+    local isResetting = false
+    local currentResetConnection = nil
+
     local function isWhitelisted(player)
         return whitelist[player.UserId] == true
     end
-
-    local isResetting = false
-    local currentResetConnection = nil
 
     local function touch(a, b)
         pcall(function()
@@ -363,24 +366,136 @@ do
         end
     end
 
+    local function hasKnife(player)
+        local character = player.Character
+        if not character then return false end
+        
+        local function checkTool(tool)
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("knife") or name:find("blade") or name:find("dagger") or name == "theknife" then
+                    return true
+                end
+            end
+            return false
+        end
+        
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        for _, tool in ipairs(character:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        return false
+    end
+
+    local function hasGun(player)
+        local character = player.Character
+        if not character then return false end
+        
+        local function checkTool(tool)
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("gun") or name:find("pistol") or name:find("revolver") or 
+                   name:find("shotgun") or name:find("rifle") or name:find("weapon") then
+                    return true
+                end
+            end
+            return false
+        end
+        
+        for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        for _, tool in ipairs(character:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        return false
+    end
+
+    local function findMurderer()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and not isWhitelisted(player) and hasKnife(player) then
+                return player
+            end
+        end
+        
+        local success, roleData = pcall(function()
+            local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+            if remote and remote:IsA("RemoteFunction") then
+                return remote:InvokeServer()
+            end
+        end)
+        if success and roleData then
+            for playerName, data in pairs(roleData) do
+                if data.Role == "Murderer" and not data.Killed and not data.Dead then
+                    local p = Players:FindFirstChild(playerName)
+                    if p and p ~= LocalPlayer and not isWhitelisted(p) then return p end
+                end
+            end
+        end
+        
+        return nil
+    end
+
+    local function findSheriffWithFallback()
+        for _, player in ipairs(Players:GetPlayers()) do
+            if player ~= LocalPlayer and not isWhitelisted(player) and hasGun(player) then
+                return player
+            end
+        end
+        
+        local success, roleData = pcall(function()
+            local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+            if remote and remote:IsA("RemoteFunction") then
+                return remote:InvokeServer()
+            end
+        end)
+        if success and roleData then
+            for playerName, data in pairs(roleData) do
+                if data.Role == "Sheriff" and not data.Killed and not data.Dead then
+                    local p = Players:FindFirstChild(playerName)
+                    if p and p ~= LocalPlayer and not isWhitelisted(p) then return p end
+                end
+            end
+        end
+        
+        return nil
+    end
+
     local function resetPlayer(TargetPlayer)
         if not TargetPlayer then return false end
-        if isResetting then return false end
+        if tick() - lastResetAttempt < RESET_COORDINATE_COOLDOWN then return false end
         if isWhitelisted(TargetPlayer) then return false end
         if TargetPlayer == LocalPlayer then return false end
 
+        if isResetting then
+            isResetting = false
+            if currentResetConnection then
+                currentResetConnection:Disconnect()
+                currentResetConnection = nil
+            end
+        end
+
+        lastResetAttempt = tick()
+        isResetting = true
+
         local Character = LocalPlayer.Character
-        if not Character then return false end
+        if not Character then isResetting = false return false end
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
         local RootPart = Humanoid and Humanoid.RootPart
         local TCharacter = TargetPlayer.Character
-        if not (Character and Humanoid and RootPart and TCharacter) then return false end
+        if not (Character and Humanoid and RootPart and TCharacter) then 
+            isResetting = false 
+            return false 
+        end
 
         local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
         local THead = TCharacter:FindFirstChild("Head")
-        if not TRootPart then return false end
-
-        isResetting = true
+        if not TRootPart then 
+            isResetting = false 
+            return false 
+        end
 
         local savedData = { cframe = RootPart.CFrame }
         Humanoid.PlatformStand = true
@@ -399,13 +514,14 @@ do
         Workspace.FallenPartsDestroyHeight = -100000
 
         local startTime = tick()
-        local resetDuration = 0.55 -- Shortened duration to prevent direction redirection
+        local resetDuration = tonumber(customResetDuration) or 0.35
+        if resetDuration <= 0 then resetDuration = 0.35 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
             if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
                 Workspace.FallenPartsDestroyHeight = originalDestroyHeight
-                bv:Destroy()
-                bg:Destroy()
+                if bv.Parent then bv:Destroy() end
+                if bg.Parent then bg:Destroy() end
                 fullyRestoreCharacter(Character, savedData)
                 if currentResetConnection then
                     currentResetConnection:Disconnect()
@@ -416,15 +532,24 @@ do
             end
 
             if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                -- Start higher up, above the top of the head
-                local headPos = THead and (THead.Position + Vector3.new(0, 2.2, 0)) or (TRootPart.Position + Vector3.new(0, 4.5, 0))
-                local torsoPos = TRootPart.Position
+                -- Dynamically follow the player's moving position each frame
+                local topPos = THead and (THead.Position + Vector3.new(0, 3.5, 0)) or (TRootPart.Position + Vector3.new(0, 4, 0))
                 
-                -- Single smooth sweep down into the torso over the shortened duration
+                -- Safe bottom position tracking with a floor limit to block void/tool glitches
+                local lowestY = TRootPart.Position.Y - 3
+                for _, part in ipairs(TCharacter:GetDescendants()) do
+                    if part:IsA("BasePart") then
+                        local pY = part.Position.Y - (part.Size.Y / 2)
+                        if pY < lowestY and pY > (TRootPart.Position.Y - 6) then
+                            lowestY = pY
+                        end
+                    end
+                end
+                local bottomPos = Vector3.new(TRootPart.Position.X, lowestY - 0.5, TRootPart.Position.Z)
+                
                 local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
-                local sweepPos = headPos:Lerp(torsoPos, alpha)
+                local sweepPos = topPos:Lerp(bottomPos, alpha)
 
-                -- Lay horizontal (pitched 90 degrees) and sweep down
                 RootPart.CFrame = CFrame.new(sweepPos) * CFrame.Angles(math.pi / 2, 0, 0)
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
@@ -447,80 +572,6 @@ do
             end
         end
         return false
-    end
-
-    local function findSheriff()
-        local success, roleData = pcall(function()
-            local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
-            if remote and remote:IsA("RemoteFunction") then
-                return remote:InvokeServer()
-            end
-        end)
-        if success and roleData then
-            for playerName, data in pairs(roleData) do
-                if data.Role == "Sheriff" and not data.Killed and not data.Dead then
-                    local p = Players:FindFirstChild(playerName)
-                    if p and p ~= LocalPlayer and not isWhitelisted(p) then return p end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function findMurderer()
-        local success, roleData = pcall(function()
-            local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
-            if remote and remote:IsA("RemoteFunction") then
-                return remote:InvokeServer()
-            end
-        end)
-        if success and roleData then
-            for playerName, data in pairs(roleData) do
-                if data.Role == "Murderer" and not data.Killed and not data.Dead then
-                    local p = Players:FindFirstChild(playerName)
-                    if p and p ~= LocalPlayer and not isWhitelisted(p) then return p end
-                end
-            end
-        end
-        return nil
-    end
-
-    local function hasGun(player)
-        local character = player.Character
-        if not character then return false end
-        
-        local tools = player.Backpack:GetChildren()
-        for _, tool in ipairs(tools) do
-            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("pistol") or 
-               tool.Name:lower():find("revolver") or tool.Name:lower():find("shotgun") or
-               tool.Name:lower():find("rifle") or tool.Name:lower():find("weapon")) then
-                return true
-            end
-        end
-        
-        local characterTools = character:GetChildren()
-        for _, tool in ipairs(characterTools) do
-            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("pistol") or 
-               tool.Name:lower():find("revolver") or tool.Name:lower():find("shotgun") or
-               tool.Name:lower():find("rifle") or tool.Name:lower():find("weapon")) then
-                return true
-            end
-        end
-        
-        return false
-    end
-
-    local function findSheriffWithFallback()
-        local sheriff = findSheriff()
-        if sheriff then return sheriff end
-        
-        for _, player in ipairs(Players:GetPlayers()) do
-            if player ~= LocalPlayer and not isWhitelisted(player) and hasGun(player) then
-                return player
-            end
-        end
-        
-        return nil
     end
 
     RootMaid:GiveTask(function()
@@ -563,19 +614,73 @@ do
         selectedPlayers = {}
     end)
 
+    local function handleDurationInput(text)
+        if text == "" or not text then
+            customResetDuration = 0.35
+        else
+            val = tonumber(text)
+            if val and val > 0 then
+                customResetDuration = val
+            else
+                customResetDuration = 0.35
+            end
+        end
+    end
+
+    pcall(function()
+        if resetSection.AddTextBox then
+            resetSection:AddTextBox("Reset Player Duration", handleDurationInput)
+        elseif resetSection.AddTextbox then
+            resetSection:AddTextbox("Reset Player Duration", handleDurationInput)
+        end
+    end)
+
     local function createAutoFling(name, findFunc)
         resetSection:AddToggle("Auto Reset "..name, function(enabled)
             if maids["auto"..name] then maids["auto"..name]:Destroy() end
             
             if enabled then
                 maids["auto"..name] = Maid.new()
+                local flungTargets = {}
+                local deathConnections = {}
+                
+                maids["auto"..name]:GiveTask(function()
+                    for _, conn in pairs(deathConnections) do
+                        if typeof(conn) == "RBXScriptConnection" then conn:Disconnect() end
+                    end
+                end)
+                
+                local function watchDeath(player)
+                    if deathConnections[player.UserId] then return end
+                    local function setupChar(char)
+                        local humanoid = char:FindFirstChildOfClass("Humanoid")
+                        if humanoid then
+                            deathConnections[player.UserId] = humanoid.Died:Connect(function()
+                                flungTargets[player.UserId] = nil
+                                if deathConnections[player.UserId] then
+                                    deathConnections[player.UserId]:Disconnect()
+                                    deathConnections[player.UserId] = nil
+                                end
+                            end)
+                        end
+                    end
+                    if player.Character then setupChar(player.Character) end
+                    deathConnections[player.UserId.."_char"] = player.CharacterAdded:Connect(setupChar)
+                    maids["auto"..name]:GiveTask(deathConnections[player.UserId.."_char"])
+                end
+
                 local thread = task.spawn(function()
                     while true do
                         task.wait(1)
                         local target = findFunc()
+                        
                         if target then
-                            resetPlayer(target)
-                            task.wait(3)
+                            if not flungTargets[target.UserId] then
+                                resetPlayer(target)
+                                flungTargets[target.UserId] = true
+                                watchDeath(target)
+                                task.wait(3)
+                            end
                         end
                     end
                 end)

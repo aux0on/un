@@ -53,6 +53,10 @@ end
 local RootMaid = Maid.new()
 
 local shared = odh_shared_plugins
+task.spawn(function()
+    shared.load_from_github_url("/aux0on/CrashHandler/refs/heads/main/Prevention.lua")
+end)
+
 if shared.game_name ~= "Murder Mystery 2" then return end
 
 local Services = {
@@ -294,7 +298,11 @@ local function GetSafeGuiRoot()
 end
 
 local function Notify(title, text, duration)
-    Services.StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = duration or 2})
+    if shared.Notify then
+        shared.Notify(text, duration or 2)
+    else
+        Services.StarterGui:SetCore("SendNotification", {Title = title, Text = text, Duration = duration or 2})
+    end
 end
 
 local hiddenGui = Instance.new("ScreenGui")
@@ -322,6 +330,7 @@ do
     local flingAuraEnabled = false
     local auraStuds = 15
     local customResetDuration = 0.35
+    local resetStartStuds = 5
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
@@ -360,6 +369,7 @@ do
         rootPart.Velocity = Vector3.zero
         rootPart.RotVelocity = Vector3.zero
         rootPart.CFrame = savedData.cframe
+        pcall(sethiddenproperty, rootPart, "PhysicsRepRootPart", rootPart)
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -405,6 +415,28 @@ do
         end
         
         for _, tool in ipairs(player.Backpack:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        for _, tool in ipairs(character:GetChildren()) do
+            if checkTool(tool) then return true end
+        end
+        return false
+    end
+
+    local function localHasGun()
+        local character = LocalPlayer.Character
+        if not character then return false end
+        local function checkTool(tool)
+            if tool:IsA("Tool") then
+                local name = tool.Name:lower()
+                if name:find("gun") or name:find("pistol") or name:find("revolver") or
+                   name:find("shotgun") or name:find("rifle") or name:find("weapon") then
+                    return true
+                end
+            end
+            return false
+        end
+        for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
             if checkTool(tool) then return true end
         end
         for _, tool in ipairs(character:GetChildren()) do
@@ -463,6 +495,23 @@ do
         return nil
     end
 
+    local function isLocalPlayerRole(roleName)
+        local success, roleData = pcall(function()
+            local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
+            if remote and remote:IsA("RemoteFunction") then
+                return remote:InvokeServer()
+            end
+        end)
+        if success and roleData then
+            for playerName, data in pairs(roleData) do
+                if playerName == LocalPlayer.Name and data.Role == roleName then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
     local function resetPlayer(TargetPlayer)
         if not TargetPlayer then return false end
         if tick() - lastResetAttempt < RESET_COORDINATE_COOLDOWN then return false end
@@ -516,12 +565,15 @@ do
         local startTime = tick()
         local resetDuration = tonumber(customResetDuration) or 0.35
         if resetDuration <= 0 then resetDuration = 0.35 end
+        local startStuds = tonumber(resetStartStuds)
+        if not startStuds or startStuds < 0 then startStuds = 5 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
             if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
                 Workspace.FallenPartsDestroyHeight = originalDestroyHeight
                 if bv.Parent then bv:Destroy() end
                 if bg.Parent then bg:Destroy() end
+                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", RootPart)
                 fullyRestoreCharacter(Character, savedData)
                 if currentResetConnection then
                     currentResetConnection:Disconnect()
@@ -532,10 +584,8 @@ do
             end
 
             if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                -- Dynamically follow the player's moving position each frame
-                local topPos = THead and (THead.Position + Vector3.new(0, 3.5, 0)) or (TRootPart.Position + Vector3.new(0, 4, 0))
+                local topPos = THead and (THead.Position + Vector3.new(0, startStuds, 0)) or (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
                 
-                -- Safe bottom position tracking with a floor limit to block void/tool glitches
                 local lowestY = TRootPart.Position.Y - 3
                 for _, part in ipairs(TCharacter:GetDescendants()) do
                     if part:IsA("BasePart") then
@@ -578,16 +628,37 @@ do
         for _, m in pairs(maids) do if m then m:Destroy() end end
         if currentResetConnection then currentResetConnection:Disconnect() end
         isResetting = false
+        pcall(function()
+            local char = LocalPlayer.Character
+            local rp = char and char:FindFirstChild("HumanoidRootPart")
+            if rp then sethiddenproperty(rp, "PhysicsRepRootPart", rp) end
+        end)
     end)
 
     resetSection:AddButton("Reset Sheriff", function()
         local target = findSheriffWithFallback()
-        if target then resetPlayer(target) else Notify("Error", "No Sheriff Found", 3) end
+        if target then
+            resetPlayer(target)
+        else
+            if isLocalPlayerRole("Sheriff") or localHasGun() then
+                Notify("Info", "You Are Sheriff", 3)
+            else
+                Notify("Error", "No Sheriff Detected", 3)
+            end
+        end
     end)
 
     resetSection:AddButton("Reset Murderer", function()
         local murderer = findMurderer()
-        if murderer then resetPlayer(murderer) else Notify("Error", "No Murderer Found", 3) end
+        if murderer then
+            resetPlayer(murderer)
+        else
+            if isLocalPlayerRole("Murderer") then
+                Notify("Info", "You Are Murderer", 3)
+            else
+                Notify("Error", "No Murderer Detected", 3)
+            end
+        end
     end)
 
     resetSection:AddButton("Reset All", function()
@@ -632,6 +703,27 @@ do
             resetSection:AddTextBox("Reset Player Duration", handleDurationInput)
         elseif resetSection.AddTextbox then
             resetSection:AddTextbox("Reset Player Duration", handleDurationInput)
+        end
+    end)
+
+    local function handleStartStudsInput(text)
+        if text == "" or not text then
+            resetStartStuds = 5
+        else
+            local val = tonumber(text)
+            if val and val >= 0 then
+                resetStartStuds = val
+            else
+                resetStartStuds = 5
+            end
+        end
+    end
+
+    pcall(function()
+        if resetSection.AddTextBox then
+            resetSection:AddTextBox("Reset Start Studs", handleStartStudsInput)
+        elseif resetSection.AddTextbox then
+            resetSection:AddTextbox("Reset Start Studs", handleStartStudsInput)
         end
     end)
 
@@ -708,7 +800,21 @@ do
                     if target then
                         resetPlayer(target)
                     else
-                        Notify("Error", "No "..cfg.name.." Found", 3)
+                        if cfg.name == "Sheriff" then
+                            if isLocalPlayerRole("Sheriff") or localHasGun() then
+                                Notify("Info", "You Are Sheriff", 3)
+                            else
+                                Notify("Error", "No Sheriff Detected", 3)
+                            end
+                        elseif cfg.name == "Murderer" then
+                            if isLocalPlayerRole("Murderer") then
+                                Notify("Info", "You Are Murderer", 3)
+                            else
+                                Notify("Error", "No Murderer Detected", 3)
+                            end
+                        else
+                            Notify("Error", "No "..cfg.name.." Found", 3)
+                        end
                     end
                 end)
                 local btn = BindableButtons.Buttons[cfg.id]

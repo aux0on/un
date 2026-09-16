@@ -328,7 +328,7 @@ do
     local flingButtonSize = 0.11
     local clickFlingEnabled = false
     local flingAuraEnabled = false
-    local auraStuds = 15
+    local resetAuraDist = 15
     local customResetDuration = 0.35
     local resetStartStuds = 5
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, flingAura=nil}
@@ -978,7 +978,7 @@ do
                                 
                                 if targetRoot and rootPart then
                                     local distance = (rootPart.Position - targetRoot.Position).Magnitude
-                                    if distance <= auraStuds then
+                                    if distance <= resetAuraDist then
                                         resetPlayer(player)
                                     end
                                 end
@@ -991,8 +991,8 @@ do
         end
     end)
 
-    resetSection:AddSlider("Aura Studs", 5, 50, 15, function(value)
-        auraStuds = value
+    resetSection:AddSlider("Reset Aura Studs", 5, 50, 15, function(value)
+        resetAuraDist = value
     end)
 end
 

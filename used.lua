@@ -386,6 +386,7 @@ do
     local resetAuraDist = 15
     local customResetDuration = 0.35
     local resetStartStuds = 5
+    local loopResetDelay = 1
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, toolReset=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
@@ -782,6 +783,27 @@ do
         end
     end)
 
+    local function handleLoopDelayInput(text)
+        if text == "" or not text then
+            loopResetDelay = 1
+        else
+            local val = tonumber(text)
+            if val and val >= 0 then
+                loopResetDelay = val
+            else
+                loopResetDelay = 1
+            end
+        end
+    end
+
+    pcall(function()
+        if resetSection.AddTextBox then
+            resetSection:AddTextBox("Loop Reset Delay", handleLoopDelayInput)
+        elseif resetSection.AddTextbox then
+            resetSection:AddTextbox("Loop Reset Delay", handleLoopDelayInput)
+        end
+    end)
+
     local function createAutoFling(name, findFunc)
         resetSection:AddToggle("Auto Reset "..name, function(enabled)
             if maids["auto"..name] then maids["auto"..name]:Destroy() end
@@ -928,7 +950,7 @@ do
                 while true do
                     if flingSelPlr and flingSelPlr.Parent and not isWhitelisted(flingSelPlr) then
                         resetPlayer(flingSelPlr)
-                        task.wait(3)
+                        task.wait(loopResetDelay)
                     end
                     
                     for _, player in ipairs(selectedPlayers) do
@@ -937,7 +959,7 @@ do
                             task.wait(0.2)
                         end
                     end
-                    task.wait(1)
+                    task.wait(loopResetDelay)
                 end
             end)
             maids.loopPlr:GiveTask(function() task.cancel(thread) end)
@@ -970,7 +992,7 @@ do
                             task.wait(0.2)
                         end
                     end
-                    task.wait(0.5)
+                    task.wait(loopResetDelay)
                 end
             end)
             maids.loopAll:GiveTask(function() 

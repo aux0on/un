@@ -101,7 +101,30 @@ local __UIS  = getfserv("UserInputService")
 local __PLRS = getfserv("Players")
 local __TS  = getfserv("TweenService")
 
+local SAVE_FILE = "ResetPlayerButtonPositions.json"
+
+local function savePositions(data)
+    pcall(function()
+        if writefile then
+            writefile(SAVE_FILE, Services.HttpService:JSONEncode(data))
+        end
+    end)
+end
+
+local function loadPositions()
+    local ok, result = pcall(function()
+        if readfile and isfile and isfile(SAVE_FILE) then
+            return Services.HttpService:JSONDecode(readfile(SAVE_FILE))
+        end
+    end)
+    if ok and type(result) == "table" then return result end
+    return {}
+end
+
+local savedPositions = loadPositions()
+
 local muteButtonSounds = false
+local resetPlayerButtonsLocked = false
 
 local function UpdateAllButtonSounds()
     local volume = muteButtonSounds and 0 or 0.5
@@ -161,12 +184,15 @@ end
 
 local function Bind_MakeDraggable(gui, maid, ripple, sound, clickFunc)
     local dragging, dragInput, dragStart, startPos
-    local hasMoved = false
+    local wasDragged = false
     
     maid:GiveTask(gui.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging, dragStart, startPos = true, input.Position, gui.Position
-            hasMoved = false
+            dragStart = input.Position
+            startPos = gui.Position
+            dragging = true
+            wasDragged = false
+            
             sound:Play()
             local absPos = gui.AbsolutePosition
             ripple.Position = __UD2(0, input.Position.X - absPos.X, 0, input.Position.Y - absPos.Y)
@@ -182,7 +208,13 @@ local function Bind_MakeDraggable(gui, maid, ripple, sound, clickFunc)
             rel = __UIS.InputEnded:Connect(function(endInput)
                 if endInput.UserInputType == input.UserInputType then
                     dragging = false
-                    if not hasMoved then
+                    if not resetPlayerButtonsLocked and wasDragged then
+                        savedPositions[gui.Name] = {
+                            xs = gui.Position.X.Scale, xo = gui.Position.X.Offset,
+                            ys = gui.Position.Y.Scale, yo = gui.Position.Y.Offset
+                        }
+                        savePositions(savedPositions)
+                    elseif not wasDragged then
                         bind_safecallback(clickFunc)
                     end
                     rel:Disconnect()
@@ -200,9 +232,14 @@ local function Bind_MakeDraggable(gui, maid, ripple, sound, clickFunc)
     maid:GiveTask(__UIS.InputChanged:Connect(function(input)
         if input == dragInput and dragging then
             local delta = input.Position - dragStart
-            if delta.Magnitude > 7 then hasMoved = true end
-            local screen = gui.Parent.AbsoluteSize
-            gui.Position = __UD2(startPos.X.Scale + (delta.X / screen.X), 0, startPos.Y.Scale + (delta.Y / screen.Y), 0)
+            if delta.Magnitude > 5 then
+                wasDragged = true
+            end
+            
+            if not resetPlayerButtonsLocked and wasDragged then
+                local screen = gui.Parent.AbsoluteSize
+                gui.Position = __UD2(startPos.X.Scale + (delta.X / screen.X), 0, startPos.Y.Scale + (delta.Y / screen.Y), 0)
+            end
         end
     end))
 end
@@ -215,13 +252,25 @@ function BindableButtons.AddBButton(id, text, clickFunc)
     local screen = camera.ViewportSize
     local buttonSizeY = 0.11
     local widthScale = buttonSizeY * (screen.Y / screen.X)
-    local xPos = 0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005))
-    local yPos = 0.9 - (math.floor(BindableButtons.Count / 8) * (buttonSizeY + 0.015))
+    
+    local sp = savedPositions[id]
+    local xPos, yPos
+    if sp then
+        xPos = sp.xs
+        yPos = sp.ys
+    else
+        xPos = 0.1 + ((BindableButtons.Count % 8) * (widthScale + 0.005))
+        yPos = 0.9 - (math.floor(BindableButtons.Count / 8) * (buttonSizeY + 0.015))
+    end
 
     local ImageButton = Instance.new("ImageButton")
     ImageButton.Name = id
     ImageButton.Size = __UD2(widthScale, 0, buttonSizeY, 0)
-    ImageButton.Position = __UD2(xPos, 0, yPos, 0)
+    if sp then
+        ImageButton.Position = __UD2(sp.xs, sp.xo, sp.ys, sp.yo)
+    else
+        ImageButton.Position = __UD2(xPos, 0, yPos, 0)
+    end
     ImageButton.AnchorPoint = __V2(0.5, 0.5)
     ImageButton.Image = __SHAPES[0]
     ImageButton.BackgroundTransparency = 1
@@ -327,11 +376,12 @@ do
     local whitelist = {}
     local flingButtonSize = 0.11
     local clickFlingEnabled = false
+    local toolResetEnabled = false
     local flingAuraEnabled = false
     local resetAuraDist = 15
     local customResetDuration = 0.35
     local resetStartStuds = 5
-    local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, flingAura=nil}
+    local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, toolReset=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
     local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -689,7 +739,7 @@ do
         if text == "" or not text then
             customResetDuration = 0.35
         else
-            val = tonumber(text)
+            local val = tonumber(text)
             if val and val > 0 then
                 customResetDuration = val
             else
@@ -784,56 +834,77 @@ do
     createAutoFling("Sheriff", findSheriffWithFallback)
     createAutoFling("Murderer", findMurderer)
 
+    resetSection:AddToggle("Lock Bindable Buttons", function(bool)
+        resetPlayerButtonsLocked = bool
+    end)
+
     local buttonConfigs = {
-        {name="Sheriff", text="RS", findFunc=findSheriffWithFallback, id="reset_sheriff"},
-        {name="Murderer", text="RM", findFunc=findMurderer, id="reset_murderer"},
-        {name="Player", text="RP", findFunc=function() return flingSelPlr end, id="reset_player"}
+        {name="Sheriff", text="RS", findFunc=findSheriffWithFallback, id="reset_sheriff", index=0},
+        {name="Murderer", text="RM", findFunc=findMurderer, id="reset_murderer", index=1},
+        {name="Player", text="RP", findFunc=function() return flingSelPlr end, id="reset_player", index=2}
     }
     
     for _, cfg in ipairs(buttonConfigs) do
-        resetSection:AddToggle("Enable "..cfg.text.." Button", function(enabled)
-            buttonToggles[cfg.name] = enabled
+        local currentCfg = cfg
+        resetSection:AddToggle("Enable "..currentCfg.text.." Button", function(enabled)
+            buttonToggles[currentCfg.name] = enabled
             
             if enabled then
-                BindableButtons.AddBButton(cfg.id, cfg.text, function()
-                    local target = cfg.findFunc()
+                BindableButtons.AddBButton(currentCfg.id, currentCfg.text, function()
+                    local target = currentCfg.findFunc()
                     if target then
                         resetPlayer(target)
                     else
-                        if cfg.name == "Sheriff" then
+                        if currentCfg.name == "Sheriff" then
                             if isLocalPlayerRole("Sheriff") or localHasGun() then
                                 Notify("Info", "You Are Sheriff", 3)
                             else
                                 Notify("Error", "No Sheriff Detected", 3)
                             end
-                        elseif cfg.name == "Murderer" then
+                        elseif currentCfg.name == "Murderer" then
                             if isLocalPlayerRole("Murderer") then
                                 Notify("Info", "You Are Murderer", 3)
                             else
                                 Notify("Error", "No Murderer Detected", 3)
                             end
                         else
-                            Notify("Error", "No "..cfg.name.." Found", 3)
+                            Notify("Error", "No "..currentCfg.name.." Found", 3)
                         end
                     end
                 end)
-                local btn = BindableButtons.Buttons[cfg.id]
+                local btn = BindableButtons.Buttons[currentCfg.id]
                 if btn then
                     local screen = workspace.CurrentCamera.ViewportSize
                     btn.Size = __UD2(flingButtonSize * (screen.Y / screen.X), 0, flingButtonSize, 0)
                 end
             else
-                BindableButtons.DeleteBButton(cfg.id)
+                BindableButtons.DeleteBButton(currentCfg.id)
             end
         end)
         
-        resetSection:AddSlider(cfg.name.." Button Size", 5, 25, 11, function(value)
+        resetSection:AddSlider(currentCfg.name.." Button Size", 5, 25, 11, function(value)
             flingButtonSize = value / 100
-            local btn = BindableButtons.Buttons[cfg.id]
+            local btn = BindableButtons.Buttons[currentCfg.id]
             if btn then
                 local screen = workspace.CurrentCamera.ViewportSize
                 btn.Size = __UD2(flingButtonSize * (screen.Y / screen.X), 0, flingButtonSize, 0)
             end
+        end)
+
+        resetSection:AddButton("Reset "..currentCfg.name.." Button Position", function()
+            savedPositions[currentCfg.id] = nil
+            savePositions(savedPositions)
+            local btn = BindableButtons.Buttons[currentCfg.id]
+            if btn then
+                local camera = workspace.CurrentCamera
+                local screen = camera.ViewportSize
+                local buttonSizeY = 0.11
+                local widthScale = buttonSizeY * (screen.Y / screen.X)
+                local xPos = 0.1 + ((currentCfg.index % 8) * (widthScale + 0.005))
+                local yPos = 0.9 - (math.floor(currentCfg.index / 8) * (buttonSizeY + 0.015))
+                btn.Position = __UD2(xPos, 0, yPos, 0)
+            end
+            Notify("Info", currentCfg.name.." button position reset", 2)
         end)
     end
 
@@ -954,6 +1025,49 @@ do
             end
             
             maids.clickFling:GiveTask(UserInputService.InputBegan:Connect(onMouseClick))
+        end
+    end)
+
+    resetSection:AddToggle("Tool Reset", function(enabled)
+        toolResetEnabled = enabled
+        if maids.toolReset then maids.toolReset:Destroy() end
+        
+        if enabled then
+            maids.toolReset = Maid.new()
+            
+            local function giveTool()
+                local char = LocalPlayer.Character
+                if not char then return end
+                
+                local tool = Instance.new("Tool")
+                tool.Name = "Reset"
+                tool.RequiresHandle = false
+                tool.Parent = LocalPlayer.Backpack
+                
+                maids.toolReset:GiveTask(tool)
+                
+                maids.toolReset:GiveTask(tool.Activated:Connect(function()
+                    local mouse = LocalPlayer:GetMouse()
+                    local target = mouse.Target
+                    if target then
+                        local character = target:FindFirstAncestorWhichIsA("Model")
+                        if character then
+                            local player = Players:GetPlayerFromCharacter(character)
+                            if player and player ~= LocalPlayer and not isWhitelisted(player) then
+                                resetPlayer(player)
+                            end
+                        end
+                    end
+                end))
+            end
+            
+            giveTool()
+            maids.toolReset:GiveTask(LocalPlayer.CharacterAdded:Connect(function(newChar)
+                task.wait(0.5)
+                if toolResetEnabled then
+                    giveTool()
+                end
+            end))
         end
     end)
 

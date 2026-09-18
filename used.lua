@@ -126,6 +126,8 @@ local savedPositions = loadPositions()
 local muteButtonSounds = false
 local resetPlayerButtonsLocked = false
 
+local BindableButtons = {Buttons = {}, Maids = {}, Count = 0}
+
 local function UpdateAllButtonSounds()
     local volume = muteButtonSounds and 0 or 0.5
     for id, btn in pairs(BindableButtons.Buttons) do
@@ -135,8 +137,6 @@ local function UpdateAllButtonSounds()
         end
     end
 end
-
-local BindableButtons = {Buttons = {}, Maids = {}, Count = 0}
 
 local __SHAPES = {
     [0] = "rbxassetid://86221076925479",
@@ -313,6 +313,7 @@ function BindableButtons.AddBButton(id, text, clickFunc)
     Instance.new("UICorner", ripple).CornerRadius = __UD(1, 0)
 
     local sound = Instance.new("Sound")
+    sound.Name = "Sound"
     sound.SoundId = "rbxassetid://3868133279"
     sound.Volume = muteButtonSounds and 0 or 0.5
     sound.Parent = ImageButton
@@ -367,6 +368,10 @@ aboutSection:AddParagraph("Reset Player", "Plugin Made by @lzzzx")
 aboutSection:AddToggle("Mute Button SFX", function(bool)
     muteButtonSounds = bool
     UpdateAllButtonSounds()
+end)
+
+aboutSection:AddToggle("Lock Bindable Buttons", function(bool)
+    resetPlayerButtonsLocked = bool
 end)
 
 do
@@ -833,10 +838,6 @@ do
 
     createAutoFling("Sheriff", findSheriffWithFallback)
     createAutoFling("Murderer", findMurderer)
-
-    resetSection:AddToggle("Lock Bindable Buttons", function(bool)
-        resetPlayerButtonsLocked = bool
-    end)
 
     local buttonConfigs = {
         {name="Sheriff", text="RS", findFunc=findSheriffWithFallback, id="reset_sheriff", index=0},

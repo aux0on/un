@@ -362,7 +362,9 @@ hiddenGui.IgnoreGuiInset = true
 hiddenGui.Parent = GetSafeGuiRoot()
 RootMaid:GiveTask(hiddenGui)
 
-local aboutSection = shared.AddSection("About")
+local my_own_tab = shared.CreateTab("Reset Player", "/aux0on/187RP/refs/heads/main/Untitled163_20260918123432")
+
+local aboutSection = my_own_tab:AddSection("About", "Information")
 aboutSection:AddParagraph("Reset Player", "Plugin Made by @lzzzx")
 
 aboutSection:AddToggle("Mute Button SFX", function(bool)
@@ -375,7 +377,7 @@ aboutSection:AddToggle("Lock Bindable Buttons", function(bool)
 end)
 
 do
-    local resetSection = shared.AddSection("Reset")
+    local resetSection = my_own_tab:AddSection("Reset", "Main Controls")
     local flingSelPlr, flingActive = nil, true
     local selectedPlayers = {}
     local whitelist = {}
@@ -384,7 +386,7 @@ do
     local toolResetEnabled = false
     local flingAuraEnabled = false
     local resetAuraDist = 15
-    local customResetDuration = 0.35
+    local customResetDuration = 1
     local resetStartStuds = 5
     local loopResetDelay = 1
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, toolReset=nil, flingAura=nil}
@@ -619,10 +621,10 @@ do
         Workspace.FallenPartsDestroyHeight = -100000
 
         local startTime = tick()
-        local resetDuration = tonumber(customResetDuration) or 0.35
-        if resetDuration <= 0 then resetDuration = 0.35 end
+        local resetDuration = tonumber(customResetDuration) or 1
+        if resetDuration <= 0 then resetDuration = 0.1 end
         local startStuds = tonumber(resetStartStuds)
-        if not startStuds or startStuds < 0 then startStuds = 5 end
+        if not startStuds then startStuds = 5 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
             if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
@@ -741,67 +743,16 @@ do
         selectedPlayers = {}
     end)
 
-    local function handleDurationInput(text)
-        if text == "" or not text then
-            customResetDuration = 0.35
-        else
-            local val = tonumber(text)
-            if val and val > 0 then
-                customResetDuration = val
-            else
-                customResetDuration = 0.35
-            end
-        end
-    end
-
-    pcall(function()
-        if resetSection.AddTextBox then
-            resetSection:AddTextBox("Reset Player Duration", handleDurationInput)
-        elseif resetSection.AddTextbox then
-            resetSection:AddTextbox("Reset Player Duration", handleDurationInput)
-        end
+    resetSection:AddSlider("Reset Player Duration", 0.1, 5, 1, function(value)
+        customResetDuration = value
     end)
 
-    local function handleStartStudsInput(text)
-        if text == "" or not text then
-            resetStartStuds = 5
-        else
-            local val = tonumber(text)
-            if val and val >= 0 then
-                resetStartStuds = val
-            else
-                resetStartStuds = 5
-            end
-        end
-    end
-
-    pcall(function()
-        if resetSection.AddTextBox then
-            resetSection:AddTextBox("Reset Start Studs", handleStartStudsInput)
-        elseif resetSection.AddTextbox then
-            resetSection:AddTextbox("Reset Start Studs", handleStartStudsInput)
-        end
+    resetSection:AddSlider("Reset Start Studs", -5, 20, 5, function(value)
+        resetStartStuds = value
     end)
 
-    local function handleLoopDelayInput(text)
-        if text == "" or not text then
-            loopResetDelay = 1
-        else
-            local val = tonumber(text)
-            if val and val >= 0 then
-                loopResetDelay = val
-            else
-                loopResetDelay = 1
-            end
-        end
-    end
-
-    pcall(function()
-        if resetSection.AddTextBox then
-            resetSection:AddTextBox("Loop Reset Delay", handleLoopDelayInput)
-        elseif resetSection.AddTextbox then
-            resetSection:AddTextbox("Loop Reset Delay", handleLoopDelayInput)
-        end
+    resetSection:AddSlider("Loop Reset Delay", 0, 10, 1, function(value)
+        loopResetDelay = value
     end)
 
     local function createAutoFling(name, findFunc)
@@ -947,22 +898,57 @@ do
         if s then
             maids.loopPlr = Maid.new()
             local thread = task.spawn(function()
+                local function resetAndWait(target)
+                    if not target or not target.Parent or isWhitelisted(target) then return end
+                    local started = resetPlayer(target)
+                    if started then
+                        local timeout = tick() + 3
+                        while isResetting and tick() < timeout do
+                            task.wait(0.1)
+                        end
+                        if isResetting then
+                            isResetting = false
+                            if currentResetConnection then
+                                currentResetConnection:Disconnect()
+                                currentResetConnection = nil
+                            end
+                        end
+                    end
+                end
+
                 while true do
                     if flingSelPlr and flingSelPlr.Parent and not isWhitelisted(flingSelPlr) then
-                        resetPlayer(flingSelPlr)
+                        resetAndWait(flingSelPlr)
                         task.wait(loopResetDelay)
                     end
                     
                     for _, player in ipairs(selectedPlayers) do
                         if player and player.Parent and not isWhitelisted(player) then
-                            resetPlayer(player)
+                            resetAndWait(player)
                             task.wait(0.2)
                         end
                     end
                     task.wait(loopResetDelay)
                 end
             end)
-            maids.loopPlr:GiveTask(function() task.cancel(thread) end)
+            maids.loopPlr:GiveTask(function() 
+                task.cancel(thread)
+                isResetting = false
+                if currentResetConnection then
+                    currentResetConnection:Disconnect()
+                    currentResetConnection = nil
+                end
+            end)
+        else
+            if maids.loopPlr then
+                maids.loopPlr:Destroy()
+                maids.loopPlr = nil
+            end
+            isResetting = false
+            if currentResetConnection then
+                currentResetConnection:Disconnect()
+                currentResetConnection = nil
+            end
         end
     end)
 

@@ -362,9 +362,9 @@ hiddenGui.IgnoreGuiInset = true
 hiddenGui.Parent = GetSafeGuiRoot()
 RootMaid:GiveTask(hiddenGui)
 
-local my_own_tab = shared.CreateTab("Reset Player", "/aux0on/187RP/refs/heads/main/Untitled163_20260918123432")
+local RP187 = shared.CreateTab("Reset Player", "/aux0on/187RP/refs/heads/main/Untitled163_20260918123432")
 
-local aboutSection = my_own_tab:AddSection("About", "Information")
+local aboutSection = RP187:AddSection("About", "Information")
 aboutSection:AddParagraph("Reset Player", "Plugin Made by @lzzzx")
 
 aboutSection:AddToggle("Mute Button SFX", function(bool)
@@ -377,7 +377,7 @@ aboutSection:AddToggle("Lock Bindable Buttons", function(bool)
 end)
 
 do
-    local resetSection = my_own_tab:AddSection("Reset", "Main Controls")
+    local resetSection = RP187:AddSection("Reset", "Main Controls")
     local flingSelPlr, flingActive = nil, true
     local selectedPlayers = {}
     local whitelist = {}

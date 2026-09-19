@@ -126,11 +126,9 @@ local savedPositions = loadPositions()
 local muteButtonSounds = false
 local resetPlayerButtonsLocked = false
 
--- Ensured robust table definition
-local BindableButtons = BindableButtons or {Buttons = {}, Maids = {}, Count = 0}
+local BindableButtons = {Buttons = {}, Maids = {}, Count = 0}
 
 local function UpdateAllButtonSounds()
-    if not BindableButtons or not BindableButtons.Buttons then return end
     local volume = muteButtonSounds and 0 or 0.5
     for id, btn in pairs(BindableButtons.Buttons) do
         local sound = btn:FindFirstChild("Sound")
@@ -247,7 +245,6 @@ local function Bind_MakeDraggable(gui, maid, ripple, sound, clickFunc)
 end
 
 function BindableButtons.AddBButton(id, text, clickFunc)
-    if not BindableButtons or not BindableButtons.Buttons then return end
     if BindableButtons.Buttons[id] then return end
     
     local buttonMaid = Maid.new()
@@ -333,7 +330,7 @@ function BindableButtons.AddBButton(id, text, clickFunc)
 end
 
 function BindableButtons.DeleteBButton(id)
-    if BindableButtons and BindableButtons.Maids and BindableButtons.Maids[id] then
+    if BindableButtons.Maids[id] then
         BindableButtons.Maids[id]:Destroy()
         BindableButtons.Maids[id] = nil
         BindableButtons.Buttons[id] = nil
@@ -849,7 +846,7 @@ do
                         end
                     end
                 end)
-                local btn = BindableButtons and BindableButtons.Buttons and BindableButtons.Buttons[currentCfg.id]
+                local btn = BindableButtons.Buttons[currentCfg.id]
                 if btn then
                     local screen = workspace.CurrentCamera.ViewportSize
                     btn.Size = __UD2(flingButtonSize * (screen.Y / screen.X), 0, flingButtonSize, 0)
@@ -861,7 +858,7 @@ do
         
         resetSection:AddSlider(currentCfg.name.." Button Size", 5, 25, 11, function(value)
             flingButtonSize = value / 100
-            local btn = BindableButtons and BindableButtons.Buttons and BindableButtons.Buttons[currentCfg.id]
+            local btn = BindableButtons.Buttons[currentCfg.id]
             if btn then
                 local screen = workspace.CurrentCamera.ViewportSize
                 btn.Size = __UD2(flingButtonSize * (screen.Y / screen.X), 0, flingButtonSize, 0)
@@ -871,14 +868,14 @@ do
         resetSection:AddButton("Reset "..currentCfg.name.." Button Position", function()
             savedPositions[currentCfg.id] = nil
             savePositions(savedPositions)
-            local btn = BindableButtons and BindableButtons.Buttons and BindableButtons.Buttons[currentCfg.id]
+            local btn = BindableButtons.Buttons[currentCfg.id]
             if btn then
                 local camera = workspace.CurrentCamera
                 local screen = camera.ViewportSize
                 local buttonSizeY = 0.11
                 local widthScale = buttonSizeY * (screen.Y / screen.X)
                 local xPos = 0.1 + ((currentCfg.index % 8) * (widthScale + 0.005))
-                local yPos =.9 - (math.floor(currentCfg.index / 8) * (buttonSizeY + 0.015))
+                local yPos = 0.9 - (math.floor(currentCfg.index / 8) * (buttonSizeY + 0.015))
                 btn.Position = __UD2(xPos, 0, yPos, 0)
             end
             Notify("Info", currentCfg.name.." button position reset", 2)
@@ -1126,10 +1123,8 @@ shared.Notify("Reset Player Successfully Loaded!", 5)
 
 RootMaid:GiveTasks(
     function()
-        if BindableButtons and BindableButtons.Buttons then
-            for id, _ in pairs(BindableButtons.Buttons) do
-                BindableButtons.DeleteBButton(id)
-            end
+        for id, _ in pairs(BindableButtons.Buttons) do
+            BindableButtons.DeleteBButton(id)
         end
     end
 )

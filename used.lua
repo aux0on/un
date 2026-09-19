@@ -57,7 +57,7 @@ task.spawn(function()
     shared.load_from_github_url("/aux0on/CrashHandler/refs/heads/main/Prevention.lua")
 end)
 
-if shared.game_name ~= "Murder Mystery 2" then return end
+if shared.game_name ~= "Murder Mystery 2" and shared.game_name ~= "Murder Mystery Modded" then return end
 
 local Services = {
     Players = game:GetService("Players"),

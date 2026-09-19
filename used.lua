@@ -1,5 +1,3 @@
--- yeah genius bro
-
 local table_insert = table.insert
 local table_find = table.find
 local math_abs = math.abs
@@ -366,8 +364,8 @@ RootMaid:GiveTask(hiddenGui)
 
 local RP187 = shared.CreateTab("Reset Player", "/aux0on/187RP/refs/heads/main/Untitled163_20260918123432")
 
-local aboutSection = RP187:AddSection("About", "Information")
-aboutSection:AddParagraph("Reset Player", "Plugin Made by @lzzzx")
+local aboutSection = RP187:AddSection("About", "Info")
+aboutSection:AddParagraph("Reset Player", "Made by @lzzzx")
 
 aboutSection:AddToggle("Mute Button SFX", function(bool)
     muteButtonSounds = bool
@@ -379,7 +377,7 @@ aboutSection:AddToggle("Lock Bindable Buttons", function(bool)
 end)
 
 do
-    local resetSection = RP187:AddSection("Reset", "Main Controls")
+    local resetSection = RP187:AddSection("Reset Player", "MM2/MMV")
     local flingSelPlr, flingActive = nil, true
     local selectedPlayers = {}
     local whitelist = {}
@@ -1121,7 +1119,7 @@ do
     end)
 end
 
-shared.Notify("Reset Player Successfully Loaded!", 5)
+shared.Notify("Reset Player Successfully Loaded!", 1)
 
 RootMaid:GiveTasks(
     function()

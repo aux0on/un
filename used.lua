@@ -389,6 +389,7 @@ do
     local customResetDuration = 1
     local resetStartStuds = 5
     local loopResetDelay = 1
+    local predictionStuds = 0
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, toolReset=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
@@ -599,14 +600,12 @@ do
         local savedData = { cframe = RootPart.CFrame }
         Humanoid.PlatformStand = true
 
-        -- downward pusher: our replacement for the spoofed physics rep
         local bv = Instance.new("BodyVelocity")
         bv.Name = "ResetVel"
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(0, -50000, 0)
         bv.Parent = RootPart
 
-        -- keeps us oriented so we don't spin out
         local bg = Instance.new("BodyGyro")
         bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bg.P = 1000000
@@ -624,7 +623,6 @@ do
         if not startStuds then startStuds = 5 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
-            -- end condition
             if tick() - startTime > resetDuration
                or not TargetPlayer.Character
                or not TRootPart.Parent
@@ -642,10 +640,19 @@ do
             end
 
             if TRootPart and TRootPart.Parent and RootPart and RootPart.Parent then
-                -- Recompute the top and bottom of the target's body each frame.
+                local targetVel = TRootPart.AssemblyLinearVelocity
+                local horizontalVel = Vector3.new(targetVel.X, 0, targetVel.Z)
+                local predictionOffset = Vector3.zero
+                
+                if horizontalVel.Magnitude > 0.2 then
+                    predictionOffset = horizontalVel.Unit * predictionStuds
+                end
+
+                local predictedRootPos = TRootPart.Position + predictionOffset
+
                 local topPos = THead
-                    and (THead.Position + Vector3.new(0, startStuds, 0))
-                    or  (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
+                    and (THead.Position + Vector3.new(0, startStuds, 0) + predictionOffset)
+                    or  (predictedRootPos + Vector3.new(0, startStuds + 0.5, 0))
 
                 local lowestY = TRootPart.Position.Y - 3
                 for _, part in ipairs(TCharacter:GetDescendants()) do
@@ -656,18 +663,16 @@ do
                         end
                     end
                 end
-                local bottomPos = Vector3.new(TRootPart.Position.X, lowestY - 0.5, TRootPart.Position.Z)
+                local bottomPos = Vector3.new(predictedRootPos.X, lowestY - 0.5, predictedRootPos.Z)
 
                 local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
                 local sweepPos = topPos:Lerp(bottomPos, alpha)
 
-                -- pure CFrame write + BodyVelocity push. no hidden property, no touch.
                 RootPart.CFrame = CFrame.new(sweepPos) * CFrame.Angles(math.pi / 2, 0, 0)
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
 
-                -- keep the pusher aimed at the target's XZ so we track them
-                bv.Velocity = (TRootPart.Position - RootPart.Position).Unit * 50000
+                bv.Velocity = (predictedRootPos - RootPart.Position).Unit * 50000
                 bg.CFrame = RootPart.CFrame
             end
         end)
@@ -746,6 +751,10 @@ do
 
     resetSection:AddSlider("Reset Start Studs", -5, 20, 5, function(value)
         resetStartStuds = value
+    end)
+
+    resetSection:AddSlider("Prediction Studs", 0, 20, 0, function(value)
+        predictionStuds = value
     end)
 
     resetSection:AddSlider("Loop Reset Delay", 0, 10, 1, function(value)

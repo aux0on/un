@@ -408,13 +408,6 @@ do
         return whitelist[player.UserId] == true
     end
 
-    local function touch(a, b)
-        pcall(function()
-            firetouchinterest(a, b, 0)
-            firetouchinterest(a, b, 1)
-        end)
-    end
-
     local function fullyRestoreCharacter(character, savedData)
         if not character or not savedData then return end
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -427,7 +420,6 @@ do
         rootPart.Velocity = Vector3.zero
         rootPart.RotVelocity = Vector3.zero
         rootPart.CFrame = savedData.cframe
-        pcall(sethiddenproperty, rootPart, "PhysicsRepRootPart", rootPart)
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -592,29 +584,34 @@ do
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
         local RootPart = Humanoid and Humanoid.RootPart
         local TCharacter = TargetPlayer.Character
-        if not (Character and Humanoid and RootPart and TCharacter) then 
-            isResetting = false 
-            return false 
+        if not (Character and Humanoid and RootPart and TCharacter) then
+            isResetting = false
+            return false
         end
 
         local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
         local THead = TCharacter:FindFirstChild("Head")
-        if not TRootPart then 
-            isResetting = false 
-            return false 
+        if not TRootPart then
+            isResetting = false
+            return false
         end
 
         local savedData = { cframe = RootPart.CFrame }
         Humanoid.PlatformStand = true
 
+        -- downward pusher: our replacement for the spoofed physics rep
         local bv = Instance.new("BodyVelocity")
+        bv.Name = "ResetVel"
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(0, -50000, 0)
         bv.Parent = RootPart
 
+        -- keeps us oriented so we don't spin out
         local bg = Instance.new("BodyGyro")
         bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bg.P = 1000000
+        bg.D = 500
+        bg.CFrame = RootPart.CFrame
         bg.Parent = RootPart
 
         local originalDestroyHeight = Workspace.FallenPartsDestroyHeight
@@ -627,11 +624,14 @@ do
         if not startStuds then startStuds = 5 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
-            if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
+            -- end condition
+            if tick() - startTime > resetDuration
+               or not TargetPlayer.Character
+               or not TRootPart.Parent
+               or not Character.Parent then
                 Workspace.FallenPartsDestroyHeight = originalDestroyHeight
                 if bv.Parent then bv:Destroy() end
                 if bg.Parent then bg:Destroy() end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", RootPart)
                 fullyRestoreCharacter(Character, savedData)
                 if currentResetConnection then
                     currentResetConnection:Disconnect()
@@ -641,9 +641,12 @@ do
                 return
             end
 
-            if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                local topPos = THead and (THead.Position + Vector3.new(0, startStuds, 0)) or (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
-                
+            if TRootPart and TRootPart.Parent and RootPart and RootPart.Parent then
+                -- Recompute the top and bottom of the target's body each frame.
+                local topPos = THead
+                    and (THead.Position + Vector3.new(0, startStuds, 0))
+                    or  (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
+
                 local lowestY = TRootPart.Position.Y - 3
                 for _, part in ipairs(TCharacter:GetDescendants()) do
                     if part:IsA("BasePart") then
@@ -654,19 +657,18 @@ do
                     end
                 end
                 local bottomPos = Vector3.new(TRootPart.Position.X, lowestY - 0.5, TRootPart.Position.Z)
-                
+
                 local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
                 local sweepPos = topPos:Lerp(bottomPos, alpha)
 
+                -- pure CFrame write + BodyVelocity push. no hidden property, no touch.
                 RootPart.CFrame = CFrame.new(sweepPos) * CFrame.Angles(math.pi / 2, 0, 0)
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
 
-                for i = 1, 5 do
-                    touch(RootPart, TRootPart)
-                    if THead then touch(RootPart, THead) end
-                end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", TRootPart)
+                -- keep the pusher aimed at the target's XZ so we track them
+                bv.Velocity = (TRootPart.Position - RootPart.Position).Unit * 50000
+                bg.CFrame = RootPart.CFrame
             end
         end)
 
@@ -686,11 +688,6 @@ do
         for _, m in pairs(maids) do if m then m:Destroy() end end
         if currentResetConnection then currentResetConnection:Disconnect() end
         isResetting = false
-        pcall(function()
-            local char = LocalPlayer.Character
-            local rp = char and char:FindFirstChild("HumanoidRootPart")
-            if rp then sethiddenproperty(rp, "PhysicsRepRootPart", rp) end
-        end)
     end)
 
     resetSection:AddButton("Reset Sheriff", function()

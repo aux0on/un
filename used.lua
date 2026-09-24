@@ -427,7 +427,7 @@ do
         rootPart.Velocity = Vector3.zero
         rootPart.RotVelocity = Vector3.zero
         rootPart.CFrame = savedData.cframe
-        pcall(sethiddenproperty, rootPart, "PhysicsRepRootRef", rootPart)
+        pcall(sethiddenproperty, rootPart, "PhysicsRepRootPart", rootPart)
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -631,7 +631,7 @@ do
                 Workspace.FallenPartsDestroyHeight = originalDestroyHeight
                 if bv.Parent then bv:Destroy() end
                 if bg.Parent then bg:Destroy() end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootRef", RootPart)
+                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", RootPart)
                 fullyRestoreCharacter(Character, savedData)
                 if currentResetConnection then
                     currentResetConnection:Disconnect()
@@ -666,7 +666,7 @@ do
                     touch(RootPart, TRootPart)
                     if THead then touch(RootPart, THead) end
                 end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootRef", TRootPart)
+                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", TRootPart)
             end
         end)
 
@@ -689,7 +689,7 @@ do
         pcall(function()
             local char = LocalPlayer.Character
             local rp = char and char:FindFirstChild("HumanoidRootPart")
-            if rp then sethiddenproperty(rp, "PhysicsRepRootRef", rp) end
+            if rp then sethiddenproperty(rp, "PhysicsRepRootPart", rp) end
         end)
     end)
 

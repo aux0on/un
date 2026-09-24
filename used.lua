@@ -389,6 +389,7 @@ do
     local customResetDuration = 1
     local resetStartStuds = 5
     local loopResetDelay = 1
+    local predictionStuds = 0
     local maids = {autoSheriff=nil, autoMurderer=nil, loopPlr=nil, loopAll=nil, clickFling=nil, toolReset=nil, flingAura=nil}
     local buttonToggles = {Sheriff=false, Murderer=false, Player=false}
     
@@ -408,13 +409,6 @@ do
         return whitelist[player.UserId] == true
     end
 
-    local function touch(a, b)
-        pcall(function()
-            firetouchinterest(a, b, 0)
-            firetouchinterest(a, b, 1)
-        end)
-    end
-
     local function fullyRestoreCharacter(character, savedData)
         if not character or not savedData then return end
         local humanoid = character:FindFirstChildOfClass("Humanoid")
@@ -427,7 +421,6 @@ do
         rootPart.Velocity = Vector3.zero
         rootPart.RotVelocity = Vector3.zero
         rootPart.CFrame = savedData.cframe
-        pcall(sethiddenproperty, rootPart, "PhysicsRepRootPart", rootPart)
         humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
         for _, part in ipairs(character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
@@ -592,22 +585,23 @@ do
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
         local RootPart = Humanoid and Humanoid.RootPart
         local TCharacter = TargetPlayer.Character
-        if not (Character and Humanoid and RootPart and TCharacter) then 
-            isResetting = false 
-            return false 
+        if not (Character and Humanoid and RootPart and TCharacter) then
+            isResetting = false
+            return false
         end
 
         local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
         local THead = TCharacter:FindFirstChild("Head")
-        if not TRootPart then 
-            isResetting = false 
-            return false 
+        if not TRootPart then
+            isResetting = false
+            return false
         end
 
         local savedData = { cframe = RootPart.CFrame }
         Humanoid.PlatformStand = true
 
         local bv = Instance.new("BodyVelocity")
+        bv.Name = "ResetVel"
         bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
         bv.Velocity = Vector3.new(0, -50000, 0)
         bv.Parent = RootPart
@@ -615,6 +609,8 @@ do
         local bg = Instance.new("BodyGyro")
         bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
         bg.P = 1000000
+        bg.D = 500
+        bg.CFrame = RootPart.CFrame
         bg.Parent = RootPart
 
         local originalDestroyHeight = Workspace.FallenPartsDestroyHeight
@@ -627,11 +623,13 @@ do
         if not startStuds then startStuds = 5 end
 
         currentResetConnection = RunService.Heartbeat:Connect(function()
-            if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
+            if tick() - startTime > resetDuration
+               or not TargetPlayer.Character
+               or not TRootPart.Parent
+               or not Character.Parent then
                 Workspace.FallenPartsDestroyHeight = originalDestroyHeight
                 if bv.Parent then bv:Destroy() end
                 if bg.Parent then bg:Destroy() end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", RootPart)
                 fullyRestoreCharacter(Character, savedData)
                 if currentResetConnection then
                     currentResetConnection:Disconnect()
@@ -641,9 +639,21 @@ do
                 return
             end
 
-            if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                local topPos = THead and (THead.Position + Vector3.new(0, startStuds, 0)) or (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
+            if TRootPart and TRootPart.Parent and RootPart and RootPart.Parent then
+                local targetVel = TRootPart.AssemblyLinearVelocity
+                local horizontalVel = Vector3.new(targetVel.X, 0, targetVel.Z)
+                local predictionOffset = Vector3.zero
                 
+                if horizontalVel.Magnitude > 0.2 then
+                    predictionOffset = horizontalVel.Unit * predictionStuds
+                end
+
+                local predictedRootPos = TRootPart.Position + predictionOffset
+
+                local topPos = THead
+                    and (THead.Position + Vector3.new(0, startStuds, 0) + predictionOffset)
+                    or  (predictedRootPos + Vector3.new(0, startStuds + 0.5, 0))
+
                 local lowestY = TRootPart.Position.Y - 3
                 for _, part in ipairs(TCharacter:GetDescendants()) do
                     if part:IsA("BasePart") then
@@ -653,8 +663,8 @@ do
                         end
                     end
                 end
-                local bottomPos = Vector3.new(TRootPart.Position.X, lowestY - 0.5, TRootPart.Position.Z)
-                
+                local bottomPos = Vector3.new(predictedRootPos.X, lowestY - 0.5, predictedRootPos.Z)
+
                 local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
                 local sweepPos = topPos:Lerp(bottomPos, alpha)
 
@@ -662,11 +672,8 @@ do
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
 
-                for i = 1, 5 do
-                    touch(RootPart, TRootPart)
-                    if THead then touch(RootPart, THead) end
-                end
-                pcall(sethiddenproperty, RootPart, "PhysicsRepRootPart", TRootPart)
+                bv.Velocity = (predictedRootPos - RootPart.Position).Unit * 50000
+                bg.CFrame = RootPart.CFrame
             end
         end)
 
@@ -686,11 +693,6 @@ do
         for _, m in pairs(maids) do if m then m:Destroy() end end
         if currentResetConnection then currentResetConnection:Disconnect() end
         isResetting = false
-        pcall(function()
-            local char = LocalPlayer.Character
-            local rp = char and char:FindFirstChild("HumanoidRootPart")
-            if rp then sethiddenproperty(rp, "PhysicsRepRootPart", rp) end
-        end)
     end)
 
     resetSection:AddButton("Reset Sheriff", function()
@@ -749,6 +751,10 @@ do
 
     resetSection:AddSlider("Reset Start Studs", -5, 20, 5, function(value)
         resetStartStuds = value
+    end)
+
+    resetSection:AddSlider("Prediction Studs", 0, 20, 0, function(value)
+        predictionStuds = value
     end)
 
     resetSection:AddSlider("Loop Reset Delay", 0, 10, 1, function(value)

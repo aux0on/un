@@ -1,7 +1,3 @@
-local table_insert = table.insert
-local table_find = table.find
-local math_abs = math.abs
-
 local Maid = {}
 Maid.__index = Maid
 
@@ -402,9 +398,9 @@ do
     local lastResetAttempt = 0
     local RESET_COORDINATE_COOLDOWN = 0.4 
     local isResetting = false
+    local isGlobalResetting = false
     local currentResetConnection = nil
 
-    -- OPFinality-style physics reference helpers
     local function setRootReference(root, target)
         pcall(function()
             sethiddenproperty(root, "PhysicsRepRootRef", InstanceHandle.new(target))
@@ -452,22 +448,11 @@ do
     local function hasKnife(player)
         local character = player.Character
         if not character then return false end
-        
-        local function checkTool(tool)
-            if tool:IsA("Tool") then
-                local name = tool.Name:lower()
-                if name:find("knife") or name:find("blade") or name:find("dagger") or name == "theknife" then
-                    return true
-                end
-            end
-            return false
-        end
-        
         for _, tool in ipairs(player.Backpack:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("knife") or tool.Name:lower() == "theknife") then return true end
         end
         for _, tool in ipairs(character:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("knife") or tool.Name:lower() == "theknife") then return true end
         end
         return false
     end
@@ -475,23 +460,11 @@ do
     local function hasGun(player)
         local character = player.Character
         if not character then return false end
-        
-        local function checkTool(tool)
-            if tool:IsA("Tool") then
-                local name = tool.Name:lower()
-                if name:find("gun") or name:find("pistol") or name:find("revolver") or 
-                   name:find("shotgun") or name:find("rifle") or name:find("weapon") then
-                    return true
-                end
-            end
-            return false
-        end
-        
         for _, tool in ipairs(player.Backpack:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then return true end
         end
         for _, tool in ipairs(character:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then return true end
         end
         return false
     end
@@ -499,21 +472,11 @@ do
     local function localHasGun()
         local character = LocalPlayer.Character
         if not character then return false end
-        local function checkTool(tool)
-            if tool:IsA("Tool") then
-                local name = tool.Name:lower()
-                if name:find("gun") or name:find("pistol") or name:find("revolver") or
-                   name:find("shotgun") or name:find("rifle") or name:find("weapon") then
-                    return true
-                end
-            end
-            return false
-        end
         for _, tool in ipairs(LocalPlayer.Backpack:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then return true end
         end
         for _, tool in ipairs(character:GetChildren()) do
-            if checkTool(tool) then return true end
+            if tool:IsA("Tool") and (tool.Name:lower():find("gun") or tool.Name:lower():find("revolver")) then return true end
         end
         return false
     end
@@ -524,7 +487,6 @@ do
                 return player
             end
         end
-        
         local success, roleData = pcall(function()
             local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
             if remote and remote:IsA("RemoteFunction") then
@@ -539,7 +501,6 @@ do
                 end
             end
         end
-        
         return nil
     end
 
@@ -549,7 +510,6 @@ do
                 return player
             end
         end
-        
         local success, roleData = pcall(function()
             local remote = ReplicatedStorage:FindFirstChild("GetPlayerData", true)
             if remote and remote:IsA("RemoteFunction") then
@@ -564,7 +524,6 @@ do
                 end
             end
         end
-        
         return nil
     end
 
@@ -591,33 +550,18 @@ do
         if isWhitelisted(TargetPlayer) then return false end
         if TargetPlayer == LocalPlayer then return false end
 
-        if isResetting then
-            isResetting = false
-            if currentResetConnection then
-                currentResetConnection:Disconnect()
-                currentResetConnection = nil
-            end
-        end
-
         lastResetAttempt = tick()
-        isResetting = true
 
         local Character = LocalPlayer.Character
-        if not Character then isResetting = false return false end
+        if not Character then return false end
         local Humanoid = Character:FindFirstChildOfClass("Humanoid")
         local RootPart = Humanoid and Humanoid.RootPart
         local TCharacter = TargetPlayer.Character
-        if not (Character and Humanoid and RootPart and TCharacter) then 
-            isResetting = false 
-            return false 
-        end
+        if not (Character and Humanoid and RootPart and TCharacter) then return false end
 
         local TRootPart = TCharacter:FindFirstChild("HumanoidRootPart")
         local THead = TCharacter:FindFirstChild("Head")
-        if not TRootPart then 
-            isResetting = false 
-            return false 
-        end
+        if not TRootPart then return false end
 
         local savedData = { cframe = RootPart.CFrame }
         Humanoid.PlatformStand = true
@@ -632,8 +576,8 @@ do
         bg.P = 1000000
         bg.Parent = RootPart
 
-        local originalDestroyHeight = Workspace.FallenPartsDestroyHeight
-        Workspace.FallenPartsDestroyHeight = -100000
+        local previousDestroyHeight = Workspace.FallenPartsDestroyHeight
+        Workspace.FallenPartsDestroyHeight = 0/0
 
         local startTime = tick()
         local resetDuration = tonumber(customResetDuration) or 1
@@ -641,39 +585,23 @@ do
         local startStuds = tonumber(resetStartStuds)
         if not startStuds then startStuds = 5 end
 
-        currentResetConnection = RunService.Heartbeat:Connect(function()
+        local completed = false
+        local conn
+        conn = RunService.Heartbeat:Connect(function()
             if tick() - startTime > resetDuration or not TargetPlayer.Character or not TRootPart.Parent then
-                Workspace.FallenPartsDestroyHeight = originalDestroyHeight
+                Workspace.FallenPartsDestroyHeight = previousDestroyHeight
                 if bv.Parent then bv:Destroy() end
                 if bg.Parent then bg:Destroy() end
                 clearRootReference(RootPart)
                 fullyRestoreCharacter(Character, savedData)
-                if currentResetConnection then
-                    currentResetConnection:Disconnect()
-                    currentResetConnection = nil
-                end
-                isResetting = false
+                if conn then conn:Disconnect() end
+                completed = true
                 return
             end
 
             if TRootPart and TRootPart.Parent and Character and Character.Parent then
-                local topPos = THead and (THead.Position + Vector3.new(0, startStuds, 0)) or (TRootPart.Position + Vector3.new(0, startStuds + 0.5, 0))
-                
-                local lowestY = TRootPart.Position.Y - 3
-                for _, part in ipairs(TCharacter:GetDescendants()) do
-                    if part:IsA("BasePart") then
-                        local pY = part.Position.Y - (part.Size.Y / 2)
-                        if pY < lowestY and pY > (TRootPart.Position.Y - 6) then
-                            lowestY = pY
-                        end
-                    end
-                end
-                local bottomPos = Vector3.new(TRootPart.Position.X, lowestY - 0.5, TRootPart.Position.Z)
-                
-                local alpha = math.clamp((tick() - startTime) / resetDuration, 0, 1)
-                local sweepPos = topPos:Lerp(bottomPos, alpha)
-
-                RootPart.CFrame = CFrame.new(sweepPos) * CFrame.Angles(math.pi / 2, 0, 0)
+                local targetPos = THead and THead.Position or (TRootPart.Position + Vector3.new(0, startStuds, 0))
+                RootPart.CFrame = CFrame.new(targetPos) * CFrame.Angles(math.pi / 2, 0, 0)
                 RootPart.AssemblyLinearVelocity = Vector3.new(0, -50000, 0)
                 RootPart.AssemblyAngularVelocity = Vector3.new(7500, 7500, 7500)
 
@@ -684,6 +612,19 @@ do
                 setRootReference(RootPart, TRootPart)
             end
         end)
+
+        while not completed and TargetPlayer.Parent do
+            task.wait(0.05)
+        end
+
+        if not completed then
+            Workspace.FallenPartsDestroyHeight = previousDestroyHeight
+            if bv.Parent then bv:Destroy() end
+            if bg.Parent then bg:Destroy() end
+            clearRootReference(RootPart)
+            fullyRestoreCharacter(Character, savedData)
+            if conn then conn:Disconnect() end
+        end
 
         return true
     end
@@ -699,19 +640,18 @@ do
 
     RootMaid:GiveTask(function()
         for _, m in pairs(maids) do if m then m:Destroy() end end
-        if currentResetConnection then currentResetConnection:Disconnect() end
-        isResetting = false
         pcall(function()
             local char = LocalPlayer.Character
             local rp = char and char:FindFirstChild("HumanoidRootPart")
             if rp then clearRootReference(rp) end
+            Workspace.FallenPartsDestroyHeight = -500 -- safe fallback
         end)
     end)
 
     resetSection:AddButton("Reset Sheriff", function()
         local target = findSheriffWithFallback()
         if target then
-            resetPlayer(target)
+            task.spawn(function() resetPlayer(target) end)
         else
             if isLocalPlayerRole("Sheriff") or localHasGun() then
                 Notify("Info", "You Are Sheriff", 3)
@@ -724,7 +664,7 @@ do
     resetSection:AddButton("Reset Murderer", function()
         local murderer = findMurderer()
         if murderer then
-            resetPlayer(murderer)
+            task.spawn(function() resetPlayer(murderer) end)
         else
             if isLocalPlayerRole("Murderer") then
                 Notify("Info", "You Are Murderer", 3)
@@ -735,17 +675,22 @@ do
     end)
 
     resetSection:AddButton("Reset All", function()
-        for _, p in ipairs(Players:GetPlayers()) do
-            if p ~= LocalPlayer and not isWhitelisted(p) then
-                resetPlayer(p)
-                task.wait(0.2)
+        if isGlobalResetting then return end
+        isGlobalResetting = true
+        task.spawn(function()
+            for _, p in ipairs(Players:GetPlayers()) do
+                if p ~= LocalPlayer and not isWhitelisted(p) then
+                    resetPlayer(p)
+                    task.wait(0.1)
+                end
             end
-        end
+            isGlobalResetting = false
+        end)
     end)
 
     resetSection:AddPlayerDropdown("Reset Player", function(p)
         flingSelPlr = p
-        if p and p ~= LocalPlayer and not isWhitelisted(p) then resetPlayer(p) end
+        if p and p ~= LocalPlayer and not isWhitelisted(p) then task.spawn(function() resetPlayer(p) end) end
     end)
 
     resetSection:AddPlayerDropdown("Select Players", function(p)
@@ -842,7 +787,7 @@ do
                 BindableButtons.AddBButton(currentCfg.id, currentCfg.text, function()
                     local target = currentCfg.findFunc()
                     if target then
-                        resetPlayer(target)
+                        task.spawn(function() resetPlayer(target) end)
                     else
                         if currentCfg.name == "Sheriff" then
                             if isLocalPlayerRole("Sheriff") or localHasGun() then
@@ -915,20 +860,7 @@ do
             local thread = task.spawn(function()
                 local function resetAndWait(target)
                     if not target or not target.Parent or isWhitelisted(target) then return end
-                    local started = resetPlayer(target)
-                    if started then
-                        local timeout = tick() + 3
-                        while isResetting and tick() < timeout do
-                            task.wait(0.1)
-                        end
-                        if isResetting then
-                            isResetting = false
-                            if currentResetConnection then
-                                currentResetConnection:Disconnect()
-                                currentResetConnection = nil
-                            end
-                        end
-                    end
+                    resetPlayer(target)
                 end
 
                 while true do
@@ -946,23 +878,11 @@ do
                     task.wait(loopResetDelay)
                 end
             end)
-            maids.loopPlr:GiveTask(function() 
-                task.cancel(thread)
-                isResetting = false
-                if currentResetConnection then
-                    currentResetConnection:Disconnect()
-                    currentResetConnection = nil
-                end
-            end)
+            maids.loopPlr:GiveTask(function() task.cancel(thread) end)
         else
             if maids.loopPlr then
                 maids.loopPlr:Destroy()
                 maids.loopPlr = nil
-            end
-            isResetting = false
-            if currentResetConnection then
-                currentResetConnection:Disconnect()
-                currentResetConnection = nil
             end
         end
     end)
@@ -976,78 +896,47 @@ do
                 while true do
                     for _, p in ipairs(Players:GetPlayers()) do
                         if p ~= LocalPlayer and not isWhitelisted(p) then
-                            local started = resetPlayer(p)
-                            if started then
-                                local timeout = tick() + 3
-                                while isResetting and tick() < timeout do
-                                    task.wait(0.1)
-                                end
-                                if isResetting then
-                                    isResetting = false
-                                    if currentResetConnection then
-                                        currentResetConnection:Disconnect()
-                                        currentResetConnection = nil
-                                    end
-                                end
-                            end
+                            resetPlayer(p)
                             task.wait(0.2)
                         end
                     end
                     task.wait(loopResetDelay)
                 end
             end)
-            maids.loopAll:GiveTask(function() 
-                task.cancel(thread)
-                isResetting = false
-                if currentResetConnection then
-                    currentResetConnection:Disconnect()
-                    currentResetConnection = nil
-                end
-            end)
+            maids.loopAll:GiveTask(function() task.cancel(thread) end)
         else
             if maids.loopAll then
                 maids.loopAll:Destroy()
                 maids.loopAll = nil
-            end
-            isResetting = false
-            if currentResetConnection then
-                currentResetConnection:Disconnect()
-                currentResetConnection = nil
             end
         end
     end)
 
     resetSection:AddToggle("Click Reset", function(enabled)
         clickFlingEnabled = enabled
-        
         if maids.clickFling then maids.clickFling:Destroy() end
         
         if enabled then
             maids.clickFling = Maid.new()
-            
             local function onMouseClick(input, processed)
                 if processed then return end
-                
                 if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
                     local mouse = LocalPlayer:GetMouse()
                     local target = mouse.Target
-                    
                     if target then
                         local character = target:FindFirstAncestorWhichIsA("Model")
                         if character then
                             local player = Players:GetPlayerFromCharacter(character)
                             if player and player ~= LocalPlayer and not isWhitelisted(player) then
-                                resetPlayer(player)
+                                task.spawn(function() resetPlayer(player) end)
                             end
                         end
                     end
                 end
             end
-            
             if UserInputService.TouchEnabled then
                 maids.clickFling:GiveTask(UserInputService.TouchTap:Connect(onMouseClick))
             end
-            
             maids.clickFling:GiveTask(UserInputService.InputBegan:Connect(onMouseClick))
         end
     end)
@@ -1058,18 +947,14 @@ do
         
         if enabled then
             maids.toolReset = Maid.new()
-            
             local function giveTool()
                 local char = LocalPlayer.Character
                 if not char then return end
-                
                 local tool = Instance.new("Tool")
                 tool.Name = "Reset"
                 tool.RequiresHandle = false
                 tool.Parent = LocalPlayer.Backpack
-                
                 maids.toolReset:GiveTask(tool)
-                
                 maids.toolReset:GiveTask(tool.Activated:Connect(function()
                     local mouse = LocalPlayer:GetMouse()
                     local target = mouse.Target
@@ -1078,26 +963,22 @@ do
                         if character then
                             local player = Players:GetPlayerFromCharacter(character)
                             if player and player ~= LocalPlayer and not isWhitelisted(player) then
-                                resetPlayer(player)
+                                task.spawn(function() resetPlayer(player) end)
                             end
                         end
                     end
                 end))
             end
-            
             giveTool()
             maids.toolReset:GiveTask(LocalPlayer.CharacterAdded:Connect(function(newChar)
                 task.wait(0.5)
-                if toolResetEnabled then
-                    giveTool()
-                end
+                if toolResetEnabled then giveTool() end
             end))
         end
     end)
 
     resetSection:AddToggle("Reset Aura", function(enabled)
         flingAuraEnabled = enabled
-        
         if maids.flingAura then maids.flingAura:Destroy() end
         
         if enabled then
@@ -1107,17 +988,15 @@ do
                     task.wait(0.5)
                     local character = LocalPlayer.Character
                     local rootPart = character and character:FindFirstChild("HumanoidRootPart")
-                    
                     if rootPart then
                         for _, player in ipairs(Players:GetPlayers()) do
                             if player ~= LocalPlayer and not isWhitelisted(player) then
                                 local targetChar = player.Character
                                 local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
-                                
                                 if targetRoot and rootPart then
                                     local distance = (rootPart.Position - targetRoot.Position).Magnitude
                                     if distance <= resetAuraDist then
-                                        resetPlayer(player)
+                                        task.spawn(function() resetPlayer(player) end)
                                     end
                                 end
                             end

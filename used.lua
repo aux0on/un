@@ -10,7 +10,7 @@ function Maid:GiveTask(task)
         self:_cleanupTask(task)
         return
     end
-    table_insert(self._tasks, task)
+    table.insert(self._tasks, task)
     return task
 end
 
